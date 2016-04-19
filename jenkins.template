@@ -1,0 +1,304 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Container for Jenkins slaves",
+  "Parameters": {
+    "Az": {
+      "Default": "us-east-1a",
+      "Type": "AWS::EC2::AvailabilityZone::Name",
+      "Description": "Availability Zone."
+    },
+    "MasterIp": {
+      "Default": "24.212.219.139/32",
+      "Type": "String",
+      "Description": "IP where Jenkins master is running."
+    }
+  },
+  "Resources": {
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "192.168.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Ref": "AWS::StackName"}
+          }
+        ]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Ref": "AWS::StackName"}
+          }
+        ]
+      }
+    },
+    "AttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "InternetGatewayId": {"Ref": "InternetGateway"}
+      }
+    },
+    "Subnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "CidrBlock": "192.168.100.0/24",
+        "AvailabilityZone": {"Ref": "Az"},
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Ref": "AWS::StackName"}
+          }
+        ]
+      }
+    },
+    "RouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {"Ref": "VPC"},
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Ref": "AWS::StackName"}
+          }
+        ]
+      }
+    },
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {"Ref": "RouteTable"},
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {"Ref": "InternetGateway"}
+      }
+    },
+    "RouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {"Ref": "Subnet"},
+        "RouteTableId": {"Ref": "RouteTable"}
+      }
+    },
+    "SecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Jenkins slaves",
+        "VpcId": {"Ref": "VPC"},
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "22",
+            "ToPort": "22",
+            "CidrIp": {"Ref": "MasterIp"}
+          }
+        ]
+      }
+    },
+    "MasterUser": {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "Policies": [
+          {
+            "PolicyName": "jenkins-master",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:Describe*"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "ec2:RunInstances",
+                  "Resource": [
+                    {
+                      "Fn::Join": [
+                        "", [
+                          "arn:aws:ec2:",
+                          {"Ref": "AWS::Region"},
+                          ":",
+                          {"Ref": "AWS::AccountId"},
+                          ":subnet/",
+                          {"Ref": "Subnet"}
+                        ]
+                      ]
+                    },
+                    {
+                      "Fn::Join": [
+                        "", [
+                          "arn:aws:ec2:",
+                          {"Ref": "AWS::Region"},
+                          ":",
+                          {"Ref": "AWS::AccountId"},
+                          ":security-group/",
+                          {"Ref": "SecurityGroup"}
+                        ]
+                      ]
+                    },
+                    {
+                      "Fn::Join": [
+                        ":", [
+                          "arn:aws:ec2",
+                          {"Ref": "AWS::Region"},
+                          {"Ref": "AWS::AccountId"},
+                          "volume/*"
+                        ]
+                      ]
+                    },
+                    {
+                      "Fn::Join": [
+                        ":", [
+                          "arn:aws:ec2",
+                          {"Ref": "AWS::Region"},
+                          {"Ref": "AWS::AccountId"},
+                          "network-interface/*"
+                        ]
+                      ]
+                    },
+                    {
+                      "Fn::Join": [
+                        ":", [
+                          "arn:aws:ec2",
+                          {"Ref": "AWS::Region"},
+                          {"Ref": "AWS::AccountId"},
+                          "key-pair/*"
+                        ]
+                      ]
+                    },
+                    {
+                      "Fn::Join": [
+                        ":", [
+                          "arn:aws:ec2",
+                          {"Ref": "AWS::Region"},
+                          ":image/*"
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:RunInstances",
+                    "ec2:TerminateInstances"
+                  ],
+                  "Resource": {
+                    "Fn::Join": [
+                      ":", [
+                        "arn:aws:ec2",
+                        {"Ref": "AWS::Region"},
+                        {"Ref": "AWS::AccountId"},
+                        "instance/*"
+                      ]
+                    ]
+                  },
+                  "Condition": {
+                    "ArnEquals": {
+                      "ec2:InstanceProfile": {
+                        "Fn::GetAtt": ["SlaveInstanceProfile", "Arn"]
+                      }
+                    },
+                    "StringEquals": {
+                      "ec2:InstanceType": "t2.nano"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "iam:PassRole",
+                  "Resource": {"Fn::GetAtt": ["SlaveRole", "Arn"]}
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "MasterAccessKey": {
+      "Type": "AWS::IAM::AccessKey",
+      "Properties": {
+        "UserName": {"Ref": "MasterUser"}
+      }
+    },
+    "SlaveRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["ec2.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "JenkinsSlave",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:AttachVolume",
+                    "ec2:CreateSnapshot",
+                    "ec2:CreateVolume",
+                    "ec2:DeleteVolume",
+                    "ec2:DescribeImageAttribute",
+                    "ec2:DescribeImages",
+                    "ec2:DescribeSnapshotAttribute",
+                    "ec2:DescribeSnapshots",
+                    "ec2:DescribeVolumes",
+                    "ec2:DetachVolume",
+                    "ec2:ModifySnapshotAttribute",
+                    "ec2:RegisterImage"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "SlaveInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [
+          {"Ref": "SlaveRole"}
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "MasterAccessKey": {
+      "Value": {"Ref": "MasterAccessKey"}
+    },
+    "MasterSecretKey": {
+      "Value": {"Fn::GetAtt": ["MasterAccessKey", "SecretAccessKey"]}
+    },
+    "SecurityGroup": {
+      "Value": {"Ref": "SecurityGroup"}
+    },
+    "Subnet": {
+      "Value": {"Ref": "Subnet"}
+    },
+    "SlaveInstanceProfile": {
+      "Value": {"Fn::GetAtt": ["SlaveInstanceProfile", "Arn"]}
+    }
+  }
+}
