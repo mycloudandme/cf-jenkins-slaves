@@ -272,6 +272,7 @@
                   "Effect": "Allow",
                   "Action": [
                     "cloudformation:CreateChangeSet",
+                    "cloudformation:DeleteChangeSet",
                     "cloudformation:DescribeChangeSet",
                     "cloudformation:DescribeStacks"
                   ],
