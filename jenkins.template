@@ -254,6 +254,7 @@
                   "Effect": "Allow",
                   "Action": [
                     "ec2:AttachVolume",
+                    "ec2:CopyImage",
                     "ec2:CreateSnapshot",
                     "ec2:CreateVolume",
                     "ec2:DeleteVolume",
@@ -263,6 +264,7 @@
                     "ec2:DescribeSnapshots",
                     "ec2:DescribeVolumes",
                     "ec2:DetachVolume",
+                    "ec2:ModifyImageAttribute",
                     "ec2:ModifySnapshotAttribute",
                     "ec2:RegisterImage"
                   ],
